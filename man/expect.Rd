@@ -17,7 +17,7 @@ number or vector of numbers with dim = dim(x).}
 \item{h,theta.density,like}{Functions of x, if type = 1.}
 }
 \value{
-Expected value: E(h(x)|Y^{n}) and normalize constant for posterior density
+Expected value: E(h(x)|Y^(n)) and normalize constant for posterior density
 }
 \description{
 Esitmate moments of h(x) with respect to posterior density

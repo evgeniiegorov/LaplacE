@@ -10,4 +10,4 @@ Download all from 'R' folder to you work directory. Open 'to_run.R' file. Execut
 all files from 'R' folder. Also, you will find in 'to_run.R' file examples of using functions.
 
 #I/O of functions
-In folder 'man' I provide '.Rd' files for each function. 
+In folder 'man' I provide both '.Rd' and '.pdf files for each function. 

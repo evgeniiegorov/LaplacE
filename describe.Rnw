@@ -1,0 +1,216 @@
+\documentclass[a4paper]{article}
+\usepackage{float}
+\usepackage{amsmath}
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+
+<<echo=FALSE>>=
+library(ggplot2) #to plot
+library(MASS)    #to matrix inverse 
+library(optimx)  #to extr. point estimate
+library(maxLik)  #to numerical derivatives
+@
+\begin{titlepage}
+\begin{center}
+    \Large
+    \textbf{Laplace approximation for estimation moments of posterior distribution}
+    
+    \vspace{0.4cm}
+    \large
+    rstats-gsoc/gsoc2015: Test for "Statistical algorithms in NIMBLE" project
+    
+    \vspace{0.4cm}
+    \textbf{Egorov Evgenii}
+    
+    \vspace{0.9cm}
+    \textbf{Abstract}
+\end{center}
+We consider the problem of calculating improper integrals with the Laplace approximation method.
+Next, we will formulate the problem of calculating the moments of the posterior distribution of parameters in terms of allowing apply the method discussed above. 
+
+As result, we will obtain R functions that allow:
+\begin{itemize}
+\item estimate moment of the posterior distribution, take as input likehood function and prior density
+\item estimate moment of the posterior distribution, take as input $-1/N\log$ of posterior density
+\item estimate improper integral in "normal form"
+\end{itemize}
+\end{titlepage}
+\section*{Laplace approximation}
+Consider a function:
+$$I(N)=\int\limits^{+\infty}_{-\infty}e^{-Nl(x)}$$
+We are interested in its asymptotic behavior for large values of $N$. For example, look at the behavior of the family of functions $e^{-Nx^2}$~(~just~assume~for~example~$l(x)=x^{2}$)~for~change~$N$~by~$10$~to~$1000$:
+\begin{figure}[H]
+\centering
+<<eval=TRUE,figs.only=TRUE, fig=TRUE, echo=FALSE>>=
+x <- seq(-1,1, by = 0.001)
+l <- function(x){
+    x^2
+  }
+temp <- list()
+temp2 <- list()
+for(i in 1:100){
+  N = 10*i
+  temp[[i]] <- data.frame( x = seq(-1,1, by = 0.001), y = exp(-(N+10)*l(x)), N = 10*i ) 
+}
+temp2 <- temp[[1]]
+for (i in 2:100){
+  temp2 <- rbind(temp2,temp[[i]]) 
+}
+qplot(data = temp2, x = x, y = y, col = N)
+@
+\end{figure}
+\newpage
+From the graphs conclusion suggests itself that with increasing $N$, improper integral values will be better approximated by the behavior of the function $l(x)$ near its extremum. From here we can get a method for computing $I$ for large $N$ (as Laplace did):
+\begin{enumerate}
+ \item approximate the behavior of the function $l(x)$  around its modal value $\hat{x}$ using the Taylor series expansion
+ \item using the terms in the expansion of the second order Gaussian identify and take advantage of its known value
+\end{enumerate}
+Thus it becomes clear requirements for the function $l(x)$
+\begin{enumerate}
+  \item $l(x)$ is unimodal
+  \item $l(x)\in C^{2}$ 
+  \item ${l}''(x)>0$ 
+\end{enumerate}
+Implement the proposed plan for the one-dimensional case. Let's start with the approximation of the function 
+$l(x)$ at the extremum $\hat{x}$. We denote the $i$-th derivative of the function $l(x)$, as $l_{i}(x)$. Given that $l_{1}(\hat{x})=0$, we have:
+$$l(x)=l_{0}(\hat{x})+\frac{1}{2!}l_{2}(\hat{x})(x-\hat{x})^{2}+\frac{1}{3!}l_{3}(\hat{x})(x-\hat{x})^{3}+\dots$$
+Substituting in the integral (for readability omit the limits of integration):
+\begin{multline}
+$$I(N)=\int e^{-Nl(x)}dx= \\ = \int\exp\left\{-N\left(l_{0}(\hat{x})+\frac{1}{2!}l_{2}(\hat{x})(x-\hat{x})^{2}+\frac{1}{3!}l_{3}(\hat{x})(x-\hat{x})^{2}+\dots\right)\right \}dx\approx \\ \approx  e^{-Nl(\hat{x})}\int e^{\frac{-N}{2}l_{2}(\hat{x})u^2}exp\left\{-\frac{N}{6}l_{3}(\hat{x})u^3\right\}du
+$$
+\end{multline}
+Hence: 
+$$I(N)\approx e^{-Nl(\hat{x})}\cdot\sqrt{2\pi}\cdot(l_2(\hat{x})N)^{-\frac{1}{2}}$$
+If we want to obtain result in the multivariate case, we should go through the same way. Denote $x$ as a $d$ dimentional vector, we will find:
+$$I(N)\approx e^{-Nl(\hat{x})}\cdot(2\pi)^{d/2}\cdot (det(H^{-1}(\hat{x})))^{1/2}\cdot N^{-d/2}$$
+where $H$ is hessian of $l(x)$ function. 
+Thus, in this section we obtain an algorithm for estimation integrals of form:
+$$I(N)=\int e^{-Nl(x)}dx$$
+Let's call this form as \textbf{normal form}. Our next goal is to follow Tierney,Kadane (Journal of the American Statistical Association (1986) $81:82-86$) and reformulate the problem of finding the posterior moments in the form of calculation of two integrals in the normal form.
+\section*{R code: est.normf}
+R code to estimate integral form in \textbf{normal form}. This is core of our algorithm, further progress is associated only with a view to convey the desired function $l$ to the est.normf function.\\ 
+As input:
+\begin{itemize}
+\item n  -- constant before l function
+\item l  -- l(x) function
+\item theta0 -- initial point to search modal value
+\item l.b, u.b -- bounds for modal value
+\end{itemize}
+<<eval=FALSE>>=
+est.normf <- function(n,l,theta0,l.b,u.b){
+    theta.hat <- as.numeric(optimx(fn = l, 
+                                   #function l is function h earlier in the text
+                      par = theta0, 
+                      #initial point to find modal  
+                      lower = l.b, upper = u.b, 
+                      #bounds to find modal
+                      method = 'L-BFGS-B')[1,1:length(theta0)])
+    #result: vector of such x that l(x) modal
+  
+    diff2 <- numericHessian(f = l, t0 = theta.hat) #hessian in modal point
+    result <- exp(-n*l(theta.hat)) * (2*pi)^(length(theta.hat)/2) *
+      (1/n)^(length(theta.hat)/2) * sqrt(det(ginv(diff2))) 
+    #integral of normal form estimation
+    list(result = result, #integral aprox value
+        modal = theta.hat) #vector of such x that l(x) modal
+  }
+@
+As output we obtain integral value and modal point. Let's try it and evaluate known improper integral 
+$\int\limits_{-\infty}^{+\infty}\int\limits_{-\infty}^{+\infty} e^{-(x^2+y^2)}dxdy=\pi$
+<<eval=TRUE>>=
+est.normf <- function(n,l,theta0,l.b,u.b){
+  theta.hat <- as.numeric(optimx(fn = l, 
+                                 par = theta0, 
+                                 lower = l.b, upper = u.b, 
+                                 method = 'L-BFGS-B')[1,1:length(theta0)])
+  
+  diff2 <- numericHessian(f = l, t0 = theta.hat)
+  result <- exp(-n*l(theta.hat)) * (2*pi)^(length(theta.hat)/2) *
+ (1/n)^(length(theta.hat)/2) * sqrt(det(ginv(diff2)))
+  list(result = result,
+       modal = theta.hat)
+}
+l <- function(theta){
+  sum(theta^2)
+}
+est.normf(1,l,c(1,1),l.b=c(-1,-1),u.b=c(1,1))
+@
+Close enough!
+\section*{Approximation of conditional probabilities}
+Assume:
+\begin{itemize}
+\item $\pi(\theta)$ prior $\theta$ density  
+\item $L(\theta)$ likehood (not log-likehood!) function given the data $Y^{(N)}$
+\item $h(\theta)$ strictly positive function 
+\end{itemize}
+Then $\theta$ posterior density:
+$$p(\theta|Y^{(N)})=\frac{\pi(\theta)L(\theta)d\theta}{\int \pi(\theta)L(\theta)d\theta}$$
+Thus:
+$$E_{n}[h]=E[h(\theta)|Y^{(N)}]=\frac{\int h(\theta)\pi(\theta)L(\theta)d\theta}{\int \pi(\theta)L(\theta)d\theta}$$
+Now we want to estimate $E[h(\theta)|Y^{(N)}]$. We can face with two possibilities:
+\begin{enumerate}
+\item we alredy have $\theta$ posterior density as function $post.den(\theta)$ and $h(\theta)$
+\item we have $\pi(\theta)$, $L(\theta)$ and $h(\theta)$ functions
+\end{enumerate}
+Thus, I found it necessary to make function, that can directly estimate integral in normal form or take as input $\pi(\theta)$, $L(\theta)$ and $h(\theta)$ functions and generate disered $l$ function itself.
+<<eval = FALSE>>=
+laplace_estimate <- function(type = 0, 
+                             # 0 for estimate diretly "normal from" with function l,
+                             # 1 for assume known g, density of theta and likehod
+                             n,
+                             theta0, l.b, u.b,
+                             l,
+                             h,theta.density,like){  
+  if (type == 1){
+    l <- function(theta){
+     -1*(log(h(theta) * theta.density(theta) * like(theta)))/n
+    }
+  }
+  
+  est.normf <- function(n,l,theta0,l.b,u.b){
+    ...
+  }
+  return(est.normf(n,l,theta0,l.b,u.b))
+}
+@
+In the first case, assume $p(\theta|Y^{(N)})=post.den(\theta)$, thus:
+$$E_{n}[h]=E[h(\theta)|Y^{(N)}=\int post.den(\theta)\cdot h(\theta)d\theta$$
+To bring integral to the normal form:
+$$l(\theta)=-(\log(post.den(\theta))+\log(h(\theta)))/N$$
+<<eval=FALSE, source = TRUE>>=
+l <- function(theta){
+  -1*(log(post.den(theta))+log(h(theta)))/N
+}
+laplace_estimate(n,l,theta0,l.b,u.b)
+@
+In the second case, form the function $l(\theta)$ to bring the integrals in the numerator and the denominator to the normal form which we have learned to compute previously.\\
+For numerator:
+$$l(\theta)=-(\log(h(\theta)+\log(\pi(\theta))+\log(L(\theta)))$$
+For denumerartor:
+$$l(\theta)=-(\log(h(\theta)+\log(\pi(\theta))+\log(L(\theta)))$$
+Thus, we just need to take a ratio. As initial point to search modal value $\hat{\theta_{n}}$ in numerator we will use modal value $\hat{\theta_{d}}$ from denumerator. Mixing it all together, we obtain "expect" function. 
+\newpage
+<<eval = FALSE>>=
+expect <- function(n,
+                   theta0,l.b,u.b,
+                   h,theta.density,like){
+  one <- function(theta){
+    return(1)
+  }
+  
+  denum <- laplace_estimate(n = n, theta0 = theta0, l.b = l.b, u.b = u.b, type = 1, 
+                            h = one, 
+                            theta.density = theta.density,like = like)
+  num <- laplace_estimate(n = n, theta0 = denum$modal, l.b = l.b, u.b = u.b,
+                          type = 1, h = h, theta.density = theta.density,like = like)
+  return(list(
+    expect = num$result/denum$result,
+    norm.constant = denum$result
+  ))
+}
+@
+
+
+\end{document}
+
+

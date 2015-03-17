@@ -28,6 +28,9 @@ Value of integral and modal point x.
 \description{
 Estimate integral with Laplase approx.
 }
+\title{
+Estimate improper integral
+}
 \author{
 Evgenii Egorov
 }

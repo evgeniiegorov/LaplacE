@@ -5,8 +5,7 @@
 expect(n, theta0, l.b, u.b, h, theta.density, like)
 }
 \arguments{
-\item{n}{Number of observations
-#'}
+\item{n}{Number of observations}
 
 \item{theta0}{Initial point to find modal value of l(x), number or vector of numbers.}
 
@@ -21,7 +20,10 @@ number or vector of numbers with dim = dim(x).}
 Expected value: E(h(x)|Y^{n}) and normalize constant for posterior density
 }
 \description{
-Esitmate moments of $g(\theta)$ with trespect to posterior density
+Esitmate moments of h(x) with respect to posterior density
+}
+\title{
+Esitmate posterior density moments 
 }
 \author{
 Egorov Evgenii
